@@ -1,0 +1,235 @@
+services:
+  postgres_cln:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_cln_data:/var/lib/postgresql/data
+      - ./init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
+    command: >
+      postgres
+      -c wal_level=replica
+      -c max_wal_senders=2
+      -c max_replication_slots=2
+      -c hot_standby=on
+    networks:
+      - lightning
+
+  postgres_replica_cln:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      PRIMARY_HOST: postgres_cln
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_replica_cln_data:/var/lib/postgresql/data
+    command: >
+      bash -c '
+      if [ ! -s "$PGDATA/PG_VERSION" ]; then
+        echo "Initializing replica...";
+        until PGPASSWORD=$${POSTGRES_PASSWORD} psql -h $${PRIMARY_HOST} -U $${POSTGRES_USER} -d $${POSTGRES_DB} -c "SELECT 1" > /dev/null 2>&1; do
+          echo "Waiting for postgres_cln...";
+          sleep 1;
+        done;
+        echo "Primary PostgreSQL is ready. Starting replication...";
+        export PGPASSWORD=$${POSTGRES_PASSWORD};
+        pg_basebackup -h $${PRIMARY_HOST} -D $${PGDATA} -U $${POSTGRES_USER} -v -P -R -X stream -C -S pgstandby
+      fi;
+      echo "Fixing permissions...";
+      chown -R postgres:postgres $${PGDATA};
+      chmod 700 $${PGDATA};
+      echo "Starting PostgreSQL as standby...";
+      exec gosu postgres postgres -c config_file=$${PGDATA}/postgresql.conf
+      '
+    depends_on:
+      - postgres_cln
+    networks:
+      - lightning
+
+  bitcoin-core:
+    build:
+      context: ./bitcoind
+      args:
+        - BITCOIN_VERSION
+        - BITCOIN_SHA256SUMS_HASH
+    image: bitcoind:${IMAGE_TAG:-latest}
+    container_name: bitcoind-regtest
+    volumes:
+      - bitcoin_regtest:/home/bitcoin/.bitcoin
+    expose:
+      - 38332
+    ports:
+      - 38333:38333
+    networks:
+      lightning:
+        aliases:
+          - bitcoind
+    environment:
+      - BITCOIN_CHAIN=regtest
+
+  core-lightning:
+    build:
+      context: ./lightningd
+      args:
+        - CORE_LIGHTNING_REPO
+        - CORE_LIGHTNING_GIT_HASH
+        - CLBOSS_REPO
+        - CLBOSS_GIT_HASH
+        - CLN_PLUGINS_REPO
+        - CLN_PLUGINS_GIT_HASH
+        - VLS_REPO
+        - VLS_GIT_HASH
+    image: lightningd:${IMAGE_TAG:-latest}
+    container_name: lightningd-regtest
+    command:
+      - --conf=/home/lightning/.lightning/regtest-config
+      - --bitcoin-rpcconnect=bitcoind
+      - --log-file=- # stdout
+      - --log-file=/home/lightning/.lightning/regtest/lightning.log
+      - --wallet=postgres://user:password@postgres_cln:5432/mydb
+    volumes:
+      - lightning_regtest:/home/lightning/.lightning
+    expose:
+      - 19846
+      - 19735
+      - 7701
+    ports:
+      - 3010:3010
+      - 19846:19846
+      - 37701:7701
+    networks:
+      - lightning
+    depends_on:
+      bitcoin-core:
+        condition: service_healthy
+      txoo-server:
+        condition: service_started
+      txoo:
+        condition: service_healthy
+      postgres_cln:
+        condition: service_started
+    environment:
+      - BITCOIND_RPC_URL=http://rpcuser:VLSsigner1@bitcoind:38332
+      - TXOO_SOURCE_URL=http://txoo-server:80
+      - RUST_LOG=info
+      - VLS_BIND=0.0.0.0
+      - VLS_PORT=7701
+      - VLS_NETWORK=regtest
+
+  txoo:
+    build:
+      context: ./txood
+      args:
+        - TXOO_REPO
+        - TXOO_GIT_HASH
+    image: txood:${IMAGE_TAG:-latest}
+    container_name: txood-regtest
+    command:
+      - --no-checkpoint
+    restart: unless-stopped
+    networks:
+      - lightning
+    volumes:
+      - txoo_regtest:/root/.txoo/
+      - bitcoin_regtest:/root/.bitcoin/
+    depends_on:
+      bitcoin-core:
+        condition: service_healthy
+    environment:
+      - BITCOIN_NETWORK=regtest
+      - BITCOIND_RPC_URL=http://rpcuser:VLSsigner1@bitcoind:38332
+
+  txoo-server:
+    image: nginx:1.27-alpine3.20
+    container_name: txoo-server-regtest
+    networks:
+      - lightning
+    depends_on:
+      txoo:
+        condition: service_started
+    volumes:
+      - type: volume
+        source: txoo_regtest
+        target: /usr/share/nginx/html
+        volume:
+          subpath: regtest/public
+    ports:
+      - "8080:80"
+
+  lss:
+    build:
+      context: ./lss
+      args:
+        - LSS_REPO
+        - LSS_GIT_HASH
+    image: lss:${IMAGE_TAG:-latest}
+    container_name: lss-regtest
+    ports:
+      - 55551:55551
+    expose:
+      - 55551
+    profiles:
+      - lss
+    networks:
+      - lightning
+    volumes:
+      - lss_regtest:/home/lss/.lss
+    environment:
+      - LSS_DATABASE=${LSS_DATABASE:-sled}
+      - PG_HOST
+      - PG_USER
+      - PG_PASS
+      - PG_DB
+
+  vls:
+    build:
+      context: ./vlsd
+      args:
+        - VLS_REPO
+        - VLS_GIT_HASH
+        - TXOO_PUBLIC_KEY
+    image: vlsd:${IMAGE_TAG:-latest}
+    container_name: vlsd-regtest
+    profiles:
+      - vls
+    command:
+      --log-level=info
+      --connect=http://core-lightning:7701
+      ${LSS_REMOTE_URL:+--lss=$LSS_REMOTE_URL}
+    networks:
+      - lightning
+    volumes:
+      - vls_regtest:/home/vls/.lightning-signer
+    depends_on:
+      txoo-server:
+        condition: service_started
+      lss:
+        condition: service_started
+        required: false
+      txoo:
+        condition: service_healthy
+    environment:
+      - LSS_REMOTE_URL
+      - VLS_NETWORK=regtest
+      - VLS_PERMISSIVE=1
+      - RUST_LOG=info
+      - BITCOIND_RPC_URL=http://rpcuser:VLSsigner1@bitcoind:38332
+
+volumes:
+  postgres_cln_data:
+  postgres_replica_cln_data:
+  bitcoin_regtest:
+  lightning_regtest:
+  txoo_regtest:
+  vls_regtest:
+  lss_regtest:
+
+networks:
+  lightning:

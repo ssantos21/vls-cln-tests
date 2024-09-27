@@ -1,0 +1,25 @@
+version: "3.8"
+services:
+  vls:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VLS_REPO
+        - VLS_GIT_HASH
+        - TXOO_PUBLIC_KEY
+    image: vlsd
+    container_name: vlsd-standalone
+    command:
+      - --connect=$CLN_REMOTE_HSMD_URL
+    network_mode: host
+    volumes:
+      - vls_data:/home/vls/.lightning-signer
+    environment:
+      - BITCOIND_RPC_URL=$BITCOIND_RPC_URL
+      - VLS_NETWORK=testnet
+
+volumes:
+  vls_data:
+    name: vls_data
+    external: true

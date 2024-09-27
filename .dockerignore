@@ -1,0 +1,9 @@
+.git
+.gitignore
+**/docker-compose*
+**/Dockerfile*
+.dockerignore
+LICENSE
+README.md
+scripts
+.gitlab-ci.yml
