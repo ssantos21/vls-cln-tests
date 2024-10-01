@@ -1,0 +1,69 @@
+docker container exec bitcoind-regtest bitcoin-cli getnewaddress
+
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 1050 $NODE_ADDRESS
+
+docker container exec lightningd-regtest lightning-cli --regtest newaddr
+
+docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address="bcrt1qcr7ycj2eycep8869vgemf2nd3w3f37n7dnss4z" amount=50.0 fee_rate=1
+
+docker container exec alice lightning-cli --regtest newaddr
+
+docker container exec bob lightning-cli --regtest newaddr
+
+### VLS node connects to Alice
+
+docker inspect alice | grep IPAddress
+
+docker inspect lightningd-regtest | grep IPAddress
+
+docker container exec alice lightning-cli --regtest getinfo
+
+docker container exec lightningd-regtest lightning-cli --regtest connect 032cdc04f9dedb6d83c1d1efa285a5d27b47445be203bc4a45421db9d624c38860 172.18.0.5:19735
+
+### Alice connects to Bob
+
+docker inspect bob | grep IPAddress
+
+docker container exec bob lightning-cli --regtest getinfo
+
+docker container exec alice lightning-cli --regtest connect 03dd2ee74ef8e13d5d67cdeb911943362af7d11c8fc9ad8cb2414a4df8dfe4f155 172.18.0.7:19735
+
+### Bob connects to VLS CLN node
+
+docker inspect lightningd-regtest | grep IPAddress
+
+docker container exec lightningd-regtest lightning-cli --regtest getinfo
+
+docker container exec bob lightning-cli --regtest connect 029b557ca3881273b4a08011cb20fd38b5cb9e197ee79428e96000baf5b2e3685a 172.18.0.9:19846
+
+### VLS node opens channel with Alice
+
+docker container exec lightningd-regtest lightning-cli --regtest fundchannel -k "id"="032cdc04f9dedb6d83c1d1efa285a5d27b47445be203bc4a45421db9d624c38860" "amount"=500016530
+
+### Alice node opens channel with Bob
+
+docker container exec alice lightning-cli --regtest fundchannel -k "id"="03dd2ee74ef8e13d5d67cdeb911943362af7d11c8fc9ad8cb2414a4df8dfe4f155" "amount"=500016530
+
+### Bob node opens channel with VLS node
+
+docker container exec bob lightning-cli --regtest fundchannel -k "id"="029b557ca3881273b4a08011cb20fd38b5cb9e197ee79428e96000baf5b2e3685a" "amount"=500016530
+
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 8 bcrt1q93fjljwp0m0jdthhh73pzdfajqmc0lcezllr80
+
+# VLS node checks channels
+
+docker container exec lightningd-regtest lightning-cli --regtest listchannels
+
+# Bob creates invoice and VLS node pays it
+
+docker container exec bob lightning-cli --regtest invoice 1000000 "first" "VLS node pays bob"
+
+docker container exec lightningd-regtest lightning-cli --regtest pay lnbcrt10u1pn0c86ssp5jd5kjz7glletlx544e39jeh0uz78xf9xgqr53zhv0pxtty7v23pqpp565lw4cdp29dflsjjtuf0fsv8erttq3h8y4t3tmmj2wwsmr56smhsdqu2ex9xgrwdajx2grsv9uhxgrzda3qxqyjw5qcqp2rzjqvkdcp8emmdkmq7p68h69pd96fa5w3zmugpmcjj9ggwmn43ycwyxqqqytcqqqqsqqqqqqqqpqqqqqzsqqc9qxpqysgqgthvjtevs3j34c7zjmfy4vdl8wdw4vtsd63um8lvnhen8ay0cxz39j26m7z554x2w94gqx8r82pyl5yrl3w6ed928al0jv9ev5ufq2gpd6sdqx
+
+# Alice creates invoice and Bob pays it
+
+docker container exec alice lightning-cli --regtest invoice 1000000 "first" "Bob pays alice"
+
+docker container exec bob lightning-cli --regtest pay lnbcrt10u1pn0cg9lsp5eywp0pz9wf4ujay6jeppgwqmrxfc58mx882w7j85uldaru576svqpp5pz3svraeslvf49f0p9ht74judagfu83fpury5p3wzxtzaat97evsdqhgfhkygrsv9uhxgrpd35kxegxqyjw5qcqp2rzjq2d42l9r3qf88d9qsqgukg8a8z6uh8se0mneg28fvqqt4adjud595qqytcqqqqcqqqqqqqqqqqqqqqgqqc9qxpqysgqxj35uum2ensad0adutln9qfd359r2s59usyedn9wucch9uz8zl6r6d55wy7v3xpghmn5sht3sa4qjx4h2ueveld8ddr436wxym02jkqptq6xqu
+
+
