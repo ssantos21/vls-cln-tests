@@ -222,6 +222,76 @@ services:
       - RUST_LOG=info
       - BITCOIND_RPC_URL=http://rpcuser:VLSsigner1@bitcoind:38332
 
+  alice:
+    image: elementsproject/lightningd:v24.05@sha256:fc02cfbf0921ab731d8b680db9d1f85b7dbb3b57db596c6dd400659678e5770b
+    container_name: alice
+    user: root
+    depends_on:
+      bitcoin-core:
+        condition: service_healthy
+    volumes:
+      - alice_regtest:/home/lightning/.lightning
+    command:
+      - --bitcoin-rpcconnect=bitcoind
+      - --bitcoin-rpcuser=rpcuser
+      - --bitcoin-rpcpassword=VLSsigner1
+      - --bitcoin-rpcport=38332
+      - --bind-addr=0.0.0.0:19735
+      - --bind-addr=ws:0.0.0.0:5001
+      - --network=regtest
+      - --database-upgrade=true
+      - --experimental-offers
+      - --grpc-port=8001
+      - --clnrest-host=0.0.0.0
+      - --clnrest-port=3001
+    expose:
+      - 19735
+      - 5001
+      - 8001
+      - 3001
+    ports:
+      - 19736:19735
+      - 5002:5001
+      - 8002:8001
+      - 3002:3001
+    networks:
+      - lightning
+
+  bob:
+    image: elementsproject/lightningd:v24.05@sha256:fc02cfbf0921ab731d8b680db9d1f85b7dbb3b57db596c6dd400659678e5770b
+    container_name: bob
+    user: root
+    depends_on:
+      bitcoin-core:
+        condition: service_healthy
+    volumes:
+      - bob_regtest:/home/lightning/.lightning
+    command:
+      - --bitcoin-rpcconnect=bitcoind
+      - --bitcoin-rpcuser=rpcuser
+      - --bitcoin-rpcpassword=VLSsigner1
+      - --bitcoin-rpcport=38332
+      - --bind-addr=0.0.0.0:19735
+      - --bind-addr=ws:0.0.0.0:5001
+      - --network=regtest
+      - --database-upgrade=true
+      - --experimental-offers
+      - --grpc-port=8001
+      - --clnrest-host=0.0.0.0
+      - --clnrest-port=3001
+    expose:
+      - 19735
+      - 5001
+      - 8001
+      - 3001
+    ports:
+      - 19737:19735
+      - 5003:5001
+      - 8003:8001
+      - 3003:3001
+    networks:
+      - lightning
+
 volumes:
   postgres_cln_data:
   postgres_replica_cln_data:
@@ -230,6 +300,8 @@ volumes:
   txoo_regtest:
   vls_regtest:
   lss_regtest:
+  alice_regtest:
+  bob_regtest:
 
 networks:
   lightning:
