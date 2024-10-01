@@ -93,7 +93,7 @@ services:
       - --bitcoin-rpcconnect=bitcoind
       - --log-file=- # stdout
       - --log-file=/home/lightning/.lightning/regtest/lightning.log
-      - --wallet=postgres://user:password@postgres_cln:5432/mydb
+      - --wallet=${DB_CONN_STRING:-postgres://user:password@postgres_cln:5432/mydb}
     volumes:
       - lightning_regtest:/home/lightning/.lightning
     expose:
@@ -122,6 +122,7 @@ services:
       - VLS_BIND=0.0.0.0
       - VLS_PORT=7701
       - VLS_NETWORK=regtest
+      - DB_CONN_STRING=postgres://user:password@postgres_cln:5432/mydb
 
   txoo:
     build:
