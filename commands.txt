@@ -66,4 +66,21 @@ docker container exec alice lightning-cli --regtest invoice 1000000 "first" "Bob
 
 docker container exec bob lightning-cli --regtest pay lnbcrt10u1pn0cg9lsp5eywp0pz9wf4ujay6jeppgwqmrxfc58mx882w7j85uldaru576svqpp5pz3svraeslvf49f0p9ht74judagfu83fpury5p3wzxtzaat97evsdqhgfhkygrsv9uhxgrpd35kxegxqyjw5qcqp2rzjq2d42l9r3qf88d9qsqgukg8a8z6uh8se0mneg28fvqqt4adjud595qqytcqqqqcqqqqqqqqqqqqqqqgqqc9qxpqysgqxj35uum2ensad0adutln9qfd359r2s59usyedn9wucch9uz8zl6r6d55wy7v3xpghmn5sht3sa4qjx4h2ueveld8ddr436wxym02jkqptq6xqu
 
+# Stop VLS CLN node
+
+docker compose stop core-lightning
+
+docker compose up --build core-lightning 
+
+# Replicate the database
+
+docker compose stop restore_server
+
+docker compose rm -v restore_server
+
+RESTORE_FROM_REPLICA=true docker compose up restore_server
+
+# VLS node connects to new restored postgres server
+
+DB_CONN_STRING=postgres://user:password@restore_server:5432/mydb docker compose up --build core-lightning
 

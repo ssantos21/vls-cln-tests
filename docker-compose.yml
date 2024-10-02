@@ -53,6 +53,21 @@ services:
     networks:
       - lightning
 
+  restore_server:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      RESTORE_FROM_REPLICA: "false"
+    ports:
+      - "5434:5432"
+    volumes:
+      - restore_server_data:/var/lib/postgresql/data
+      - ./init-restore.sh:/docker-entrypoint-initdb.d/init-restore.sh
+    networks:
+      - lightning
+
   bitcoin-core:
     build:
       context: ./bitcoind
@@ -296,6 +311,7 @@ services:
 volumes:
   postgres_cln_data:
   postgres_replica_cln_data:
+  restore_server_data:
   bitcoin_regtest:
   lightning_regtest:
   txoo_regtest:
