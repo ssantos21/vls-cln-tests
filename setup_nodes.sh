@@ -166,4 +166,42 @@ fi
 # Extract the 'bolt11' value using sed
 bob_invoice=$(echo "$output" | sed -n 's/.*"bolt11": "\(.*\)",*/\1/p')
 
-docker container exec lightningd-regtest lightning-cli --regtest pay $bob_invoice
+container_name="lightningd-regtest"
+
+# Call the pay_invoice_and_wait function
+pay_invoice_and_wait "$container_name" "$bob_invoice"
+
+# Check if the function succeeded
+if [ $? -eq 0 ]; then
+    echo "Payment is complete in container '$container_name'. Proceeding with tests..."
+else
+    echo "Payment did not complete in container '$container_name'. Aborting."
+    exit 1
+fi
+
+### Alice creates invoice and Bob pays it
+
+# Execute the command and capture the output
+output=$(docker container exec alice lightning-cli --regtest invoice 1000000 "first" "Bob pays alice")
+
+# Check if the command was successful
+if [ $? -ne 0 ]; then
+    echo "Failed to execute lightning-cli command."
+    exit 1
+fi
+
+# Extract the 'bolt11' value using sed
+alice_invoice=$(echo "$output" | sed -n 's/.*"bolt11": "\(.*\)",*/\1/p')
+
+container_name="bob"
+
+# Call the pay_invoice_and_wait function
+pay_invoice_and_wait "$container_name" "$alice_invoice"
+
+# Check if the function succeeded
+if [ $? -eq 0 ]; then
+    echo "Payment is complete in container '$container_name'. Proceeding with tests..."
+else
+    echo "Payment did not complete in container '$container_name'. Aborting."
+    exit 1
+fi

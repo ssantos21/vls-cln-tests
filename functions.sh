@@ -214,3 +214,40 @@ check_invoices() {
         fi
     done
 }
+
+# Function to pay an invoice and wait for the payment to be complete
+pay_invoice_and_wait() {
+    local container_name="$1"
+    local invoice="$2"
+    local max_time=120    # Maximum time to wait in seconds (2 minutes)
+    local delay=5         # Delay between checks in seconds
+    local start_time
+    start_time=$(date +%s)
+    local output
+
+    while true; do
+        # Execute the payment command and capture both stdout and stderr
+        output=$(docker container exec "$container_name" lightning-cli --regtest pay "$invoice")
+
+        # Check if 'status' exists and has the value 'complete'
+        local status
+        status=$(echo "$output" | grep '"status":' | awk -F'"' '{print $4}')
+
+        if [ "$status" == "complete" ]; then
+            echo "Payment is 'complete' in container '$container_name'."
+            return 0
+        else
+            local current_time
+            current_time=$(date +%s)
+            local elapsed_time=$((current_time - start_time))
+
+            if [ $elapsed_time -ge $max_time ]; then
+                echo "Payment did not reach 'complete' status in container '$container_name' after $max_time seconds."
+                return 1
+            else
+                echo "Waiting for payment to reach 'complete' status in container '$container_name'... ($elapsed_time/$max_time seconds elapsed)"
+                sleep $delay
+            fi
+        fi
+    done
+}
