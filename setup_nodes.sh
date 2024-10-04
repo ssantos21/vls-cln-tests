@@ -151,3 +151,19 @@ for container in "${containers[@]}"; do
         exit 1
     fi
 done
+
+### Bob creates invoice and VLS node pays it
+
+# Execute the command and capture the output
+output=$(docker container exec bob lightning-cli --regtest invoice 1000000 "first" "VLS node pays bob")
+
+# Check if the command was successful
+if [ $? -ne 0 ]; then
+    echo "Failed to execute lightning-cli command."
+    exit 1
+fi
+
+# Extract the 'bolt11' value using sed
+bob_invoice=$(echo "$output" | sed -n 's/.*"bolt11": "\(.*\)",*/\1/p')
+
+docker container exec lightningd-regtest lightning-cli --regtest pay $bob_invoice

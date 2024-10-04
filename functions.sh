@@ -153,3 +153,64 @@ check_channels() {
         fi
     done
 }
+
+
+# Function to check if all invoices with a given label have 'paid' status
+check_invoices() {
+    local container_name="$1"
+    local label="$2"
+    local max_time=120    # Maximum time to wait in seconds (2 minutes)
+    local delay=5         # Delay between checks in seconds
+    local start_time
+    start_time=$(date +%s)
+
+    while true; do
+        # Run the command and capture the output
+        local output
+        output=$(docker container exec "$container_name" lightning-cli --regtest listinvoices "$label" 2>/dev/null)
+
+        # Check if the command was successful
+        if [ $? -ne 0 ]; then
+            echo "Failed to execute lightning-cli command in container '$container_name' for label '$label'."
+            return 1
+        fi
+
+        # Check if 'invoices' array is empty
+        echo "$output" | grep '"invoices": \[\]' >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            echo "No invoices found with label '$label' in container '$container_name'."
+            return 1
+        fi
+
+        # Extract all 'status' values for the invoices
+        local statuses
+        statuses=$(echo "$output" | grep '"status":' | awk -F'"' '{print $4}')
+
+        # Initialize a flag to check if all invoices are 'paid'
+        local all_paid=true
+
+        for status in $statuses; do
+            if [ "$status" != "paid" ]; then
+                all_paid=false
+                break
+            fi
+        done
+
+        if $all_paid; then
+            echo "All invoices with label '$label' are 'paid' in container '$container_name'."
+            return 0
+        else
+            local current_time
+            current_time=$(date +%s)
+            local elapsed_time=$((current_time - start_time))
+
+            if [ $elapsed_time -ge $max_time ]; then
+                echo "Invoices with label '$label' did not reach 'paid' status in container '$container_name' after $max_time seconds."
+                return 1
+            else
+                echo "Waiting for invoices with label '$label' to be 'paid' in container '$container_name'... ($elapsed_time/$max_time seconds elapsed)"
+                sleep $delay
+            fi
+        fi
+    done
+}
