@@ -4,26 +4,32 @@
 source functions.sh
 
 # Execute the command and store the output in a variable
-address=$(docker container exec -T bitcoind-regtest bitcoin-cli getnewaddress)
+bitcoind_address=$(docker container exec bitcoind-regtest bitcoin-cli getnewaddress)
 
-docker container exec -T bitcoind-regtest bitcoin-cli generatetoaddress 1850 $address
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 1850 $bitcoind_address
 
 # Execute the command and store the output
 output=$(docker container exec lightningd-regtest lightning-cli --regtest newaddr)
 
+echo $output
+
 # Extract the bech32 address from the output using sed
-address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
+cln_address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
+
+echo "cln_address: $cln_address"
 
 # Display the address
 # echo "The new bech32 address is: $address"
 
-docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$address amount=150.0 fee_rate=1
+docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$cln_address amount=150.0 fee_rate=1
 
 output=$(docker container exec alice lightning-cli --regtest newaddr)
 
 alice_address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
 
 docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$alice_address amount=150.0 fee_rate=1
+
+docker container exec bitcoind-regtest bitcoin-cli listtransactions
 
 # echo "The new alice address is: $alice_address"
 
@@ -34,6 +40,28 @@ bob_address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
 docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$bob_address amount=150.0 fee_rate=1
 
 # echo "The new bob address is: $bob_address"
+
+### Confirm blocks
+
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 10 $bitcoind_address
+
+# Containers to check
+containers=("lightningd-regtest" "alice" "bob")
+
+for container in "${containers[@]}"; do
+    echo "Checking funds for container '$container'..."
+    
+    # Call the check_funds function
+    check_funds "$container"
+    
+    # Check if the function succeeded
+    if [ $? -eq 0 ]; then
+        echo "Funds are available in container '$container'."
+    else
+        echo "Failed to detect funds in container '$container'. Aborting."
+        exit 1
+    fi
+done
 
 ### Get all IP addresses, IDs and ports
 
@@ -85,6 +113,8 @@ docker container exec alice lightning-cli --regtest connect $bob_id $bob_ip_addr
 
 docker container exec bob lightning-cli --regtest connect $cln_id $cln_ip_address:$cln_port
 
+docker container exec lightningd-regtest lightning-cli --regtest listfunds
+
 ### CLN funds a channel with Alice
 
 docker container exec lightningd-regtest lightning-cli --regtest fundchannel -k "id"="$alice_id" "amount"=500016530
@@ -98,10 +128,26 @@ docker container exec alice lightning-cli --regtest fundchannel -k "id"="$bob_id
 docker container exec bob lightning-cli --regtest fundchannel -k "id"="$cln_id" "amount"=500016530
 
 ### Confirm blocks
-address=$(docker container exec -T bitcoind-regtest bitcoin-cli getnewaddress)
-
-docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 8 $address
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 12 $bitcoind_address
 
 # VLS node checks channels
 
-docker container exec lightningd-regtest lightning-cli --regtest listpeerchannels
+echo "VLS node checks channels"
+
+# Containers to check
+containers=("lightningd-regtest" "alice" "bob")
+
+for container in "${containers[@]}"; do
+    echo "Checking channels for container '$container'..."
+    
+    # Call the check_funds function
+    check_channels "$container"
+    
+    # Check if the function succeeded
+    if [ $? -eq 0 ]; then
+        echo "All channels are ready in container '$container'. Proceeding with tests..."
+    else
+        echo "Channels are not ready in container '$container'. Aborting."
+        exit 1
+    fi
+done
