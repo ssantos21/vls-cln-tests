@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# Source the functions file
+source functions.sh
+
+# Execute the command and store the output in a variable
+address=$(docker container exec -T bitcoind-regtest bitcoin-cli getnewaddress)
+
+docker container exec -T bitcoind-regtest bitcoin-cli generatetoaddress 1850 $address
+
+# Execute the command and store the output
+output=$(docker container exec lightningd-regtest lightning-cli --regtest newaddr)
+
+# Extract the bech32 address from the output using sed
+address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
+
+# Display the address
+# echo "The new bech32 address is: $address"
+
+docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$address amount=150.0 fee_rate=1
+
+output=$(docker container exec alice lightning-cli --regtest newaddr)
+
+alice_address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
+
+docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$alice_address amount=150.0 fee_rate=1
+
+# echo "The new alice address is: $alice_address"
+
+output=$(docker container exec bob lightning-cli --regtest newaddr)
+
+bob_address=$(echo "$output" | sed -n 's/.*"bech32": "\(.*\)".*/\1/p')
+
+docker container exec bitcoind-regtest bitcoin-cli -named sendtoaddress address=$bob_address amount=150.0 fee_rate=1
+
+# echo "The new bob address is: $bob_address"
+
+### Get all IP addresses, IDs and ports
+
+alice_ip_address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' alice)
+
+bob_ip_address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' bob)
+
+cln_ip_address=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' lightningd-regtest)
+
+# echo "The alice address IP is: $alice_ip_address"
+
+# echo "The bob address IP is: $bob_ip_address"
+
+# echo "The CLN address IP is: $cln_ip_address"
+
+get_id_and_port alice
+
+alice_id=$CONTAINER_ID
+
+alice_port=$CONTAINER_PORT
+
+get_id_and_port bob
+
+bob_id=$CONTAINER_ID
+
+bob_port=$CONTAINER_PORT
+
+get_id_and_port lightningd-regtest
+
+cln_id=$CONTAINER_ID
+
+cln_port=$CONTAINER_PORT
+
+# echo "The alice id is: $alice_id and the port is: $alice_port"
+
+# echo "The bob id is: $bob_id and the port is: $bob_port"
+
+# echo "The CLN id is: $cln_id and the port is: $cln_port"
+
+### CLN node connects to Alice
+
+docker container exec lightningd-regtest lightning-cli --regtest connect $alice_id $alice_ip_address:$alice_port
+
+### Alice connects to Bob
+
+docker container exec alice lightning-cli --regtest connect $bob_id $bob_ip_address:$bob_port
+
+### Bob connects to VLS CLN node
+
+docker container exec bob lightning-cli --regtest connect $cln_id $cln_ip_address:$cln_port
+
+### CLN funds a channel with Alice
+
+docker container exec lightningd-regtest lightning-cli --regtest fundchannel -k "id"="$alice_id" "amount"=500016530
+
+### Alice funds a channel with Bob
+
+docker container exec alice lightning-cli --regtest fundchannel -k "id"="$bob_id" "amount"=500016530
+
+### Bob funds a channel with CLN node
+
+docker container exec bob lightning-cli --regtest fundchannel -k "id"="$cln_id" "amount"=500016530
+
+### Confirm blocks
+address=$(docker container exec -T bitcoind-regtest bitcoin-cli getnewaddress)
+
+docker container exec bitcoind-regtest bitcoin-cli generatetoaddress 8 $address
+
+# VLS node checks channels
+
+docker container exec lightningd-regtest lightning-cli --regtest listpeerchannels

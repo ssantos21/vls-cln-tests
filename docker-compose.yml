@@ -138,6 +138,11 @@ services:
       - VLS_PORT=7701
       - VLS_NETWORK=regtest
       - DB_CONN_STRING=postgres://user:password@postgres_cln:5432/mydb
+    healthcheck:
+      test: ["CMD", "lightning-cli", "--network=regtest", "getinfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   txoo:
     build:
@@ -272,6 +277,11 @@ services:
       - 3002:3001
     networks:
       - lightning
+    healthcheck:
+      test: ["CMD", "lightning-cli", "--network=regtest", "getinfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   bob:
     image: elementsproject/lightningd:v24.05@sha256:fc02cfbf0921ab731d8b680db9d1f85b7dbb3b57db596c6dd400659678e5770b
@@ -307,6 +317,11 @@ services:
       - 3003:3001
     networks:
       - lightning
+    healthcheck:
+      test: ["CMD", "lightning-cli", "--network=regtest", "getinfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_cln_data:
