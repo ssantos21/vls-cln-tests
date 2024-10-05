@@ -2,11 +2,9 @@ docker container exec lightningd-regtest lightning-cli --regtest listfunds
 
 docker compose stop core-lightning
 
-# docker compose stop restore_server
+docker compose stop restore_server
 
-# docker compose rm -v restore_server
-
-docker compose rm -fsv restore_server
+docker compose down -v restore_server
 
 RESTORE_FROM_REPLICA=true docker compose up -d restore_server
 
@@ -17,10 +15,3 @@ DB_CONN_STRING=postgres://user:password@restore_server:5432/mydb docker compose 
 bash wait-for-services.sh
 
 docker container exec lightningd-regtest lightning-cli --regtest listfunds
-
-echo "Sleeping for 100 seconds"
-
-sleep 20
-
-docker container exec lightningd-regtest lightning-cli --regtest listfunds
-
