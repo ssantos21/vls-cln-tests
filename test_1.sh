@@ -20,6 +20,7 @@ docker container exec lightningd-regtest lightning-cli --regtest listfunds
 
 echo "Sleeping for 100 seconds"
 
-sleep 100
+sleep 20
 
 docker container exec lightningd-regtest lightning-cli --regtest listfunds
+

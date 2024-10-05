@@ -59,12 +59,34 @@ services:
       POSTGRES_DB: mydb
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      RESTORE_FROM_REPLICA: "false"
+      RESTORE_FROM_REPLICA: "${RESTORE_FROM_REPLICA:-false}"
     ports:
       - "5434:5432"
     volumes:
       - restore_server_data:/var/lib/postgresql/data
-      - ./init-restore.sh:/docker-entrypoint-initdb.d/init-restore.sh
+      - ./post-restore.sh:/post-restore.sh
+    command: >
+      bash -c '
+      if [ "$${RESTORE_FROM_REPLICA}" = "true" ]; then
+        echo "Restoring data from replica...";
+        rm -rf $${PGDATA}/*;
+        until PGPASSWORD=$${POSTGRES_PASSWORD} psql -h postgres_replica_cln -U $${POSTGRES_USER} -d $${POSTGRES_DB} -c "SELECT 1" > /dev/null 2>&1; do
+          echo "Waiting for postgres_replica_cln...";
+          sleep 1;
+        done;
+        echo "Replica PostgreSQL is ready. Starting base backup...";
+        export PGPASSWORD=$${POSTGRES_PASSWORD};
+        pg_basebackup -h postgres_replica_cln -D $${PGDATA} -U $${POSTGRES_USER} -v -P -X stream;
+        echo "Base backup completed.";
+        echo "Fixing permissions...";
+        chown -R postgres:postgres $${PGDATA};
+        chmod 700 $${PGDATA};
+        echo "Configuring as standalone instance...";
+        PGDATA=$${PGDATA} /post-restore.sh;
+      fi;
+      echo "Starting PostgreSQL...";
+      exec docker-entrypoint.sh postgres
+      '
     networks:
       - lightning
 
