@@ -179,6 +179,13 @@ else
     exit 1
 fi
 
+if check_invoices "bob" "first"; then
+    echo "VLS node paid bob"
+else
+    echo "VLS node didn't pay bob"
+    exit 1
+fi
+
 ### Alice creates invoice and Bob pays it
 
 # Execute the command and capture the output
@@ -203,5 +210,12 @@ if [ $? -eq 0 ]; then
     echo "Payment is complete in container '$container_name'. Proceeding with tests..."
 else
     echo "Payment did not complete in container '$container_name'. Aborting."
+    exit 1
+fi
+
+if check_invoices "alice" "first"; then
+    echo "Bob node paid alice"
+else
+    echo "Bob node didn't pay alice"
     exit 1
 fi

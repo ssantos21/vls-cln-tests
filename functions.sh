@@ -251,3 +251,35 @@ pay_invoice_and_wait() {
         fi
     done
 }
+
+check_replication_sync() {
+    local primary_container="$1"
+    local replica_container="$2"
+    
+    if [ -z "$primary_container" ] || [ -z "$replica_container" ]; then
+        echo "Error: Both primary and replica container names must be provided."
+        return 1
+    fi
+
+    start_time=$(date +%s)
+    end_time=$((start_time + 120))  # 2 minutes from now
+
+    while [ $(date +%s) -lt $end_time ]; do
+        primary_lsn=$(docker compose exec -it "$primary_container" psql -U user -d mydb -t -c "SELECT pg_current_wal_lsn();" | tr -d ' ')
+        replica_lsn=$(docker compose exec -it "$replica_container" psql -U user -d mydb -t -c "SELECT pg_last_wal_replay_lsn();" | tr -d ' ')
+
+        echo "Primary $primary_container LSN: $primary_lsn"
+        echo "Replica $replica_container LSN: $replica_lsn"
+
+        if [ "$primary_lsn" = "$replica_lsn" ]; then
+            echo "Replication is in sync!"
+            return 0
+        fi
+
+        echo "Waiting for sync... ($(( end_time - $(date +%s) )) seconds left)"
+        sleep 5
+    done
+
+    echo "Timeout: Replication did not sync within 2 minutes."
+    return 1
+}
